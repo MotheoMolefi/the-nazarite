@@ -16,6 +16,10 @@ function Samson:new(x, y)
     self.state = "idle"         -- Options: idle, walk, run, hurt, death, etc.
     self.direction = "down"     -- Options: down, left, right, up
     self.isAttacking = false    -- Track if currently attacking
+    self.isHurt = false         -- Track if currently hurt
+    self.isDead = false         -- Track if dead
+    self.invincible = false     -- Track invincibility frames
+    self.invincibleTimer = 0    -- I-frame timer
 
     -- 🖼️ Load sprite sheets
     self.images = {
@@ -32,8 +36,8 @@ function Samson:new(x, y)
         run_attack = love.graphics.newImage("assets/sprites/samson/run_attack.png"),
 
         -- ⚫ Damage state
-        -- hurt = love.graphics.newImage("assets/sprites/samson/hurt.png"),
-        -- death = love.graphics.newImage("assets/sprites/samson/death.png"),
+        hurt = love.graphics.newImage("assets/sprites/samson/hurt.png"),
+        death = love.graphics.newImage("assets/sprites/samson/death.png"),
     }
 
     -- 🔲 Create animation grids
@@ -51,8 +55,8 @@ function Samson:new(x, y)
         run = makeGrid(self.images.run),
         run_attack = makeGrid(self.images.run_attack),
         
-        -- hurt = makeGrid(self.images.hurt),
-        -- death = makeGrid(self.images.death),
+        hurt = makeGrid(self.images.hurt),
+        death = makeGrid(self.images.death),
     }
 
     -- 🌀 Animations
@@ -99,9 +103,19 @@ function Samson:new(x, y)
             up    = anim8.newAnimation(self.grids.run_attack('1-8', 4), 0.06, 'pauseAtEnd'),
         },
 
-        -- ⚫ Hurt / Death animations (to be added later)
-        -- hurt = { ... }
-        -- death = { ... }
+        -- ⚫ Damage state animations
+        hurt = {
+            down  = anim8.newAnimation(self.grids.hurt('1-5', 1), 0.1, 'pauseAtEnd'),
+            left  = anim8.newAnimation(self.grids.hurt('1-5', 2), 0.1, 'pauseAtEnd'),
+            right = anim8.newAnimation(self.grids.hurt('1-5', 3), 0.1, 'pauseAtEnd'),
+            up    = anim8.newAnimation(self.grids.hurt('1-5', 4), 0.1, 'pauseAtEnd'),
+        },
+        death = {
+            down  = anim8.newAnimation(self.grids.death('1-7', 1), 0.15, 'pauseAtEnd'),
+            left  = anim8.newAnimation(self.grids.death('1-7', 2), 0.15, 'pauseAtEnd'),
+            right = anim8.newAnimation(self.grids.death('1-7', 3), 0.15, 'pauseAtEnd'),
+            up    = anim8.newAnimation(self.grids.death('1-7', 4), 0.15, 'pauseAtEnd'),
+        },
     }
 
     -- ▶️ Set initial animation
@@ -136,7 +150,42 @@ function Samson:update(dt)
     -- Movement: WASD / Arrow Keys
     -- Run: Shift + Movement
     -- Attack: Spacebar (idle/walk/run attack based on movement state)
+    -- Debug: H key to take damage (for testing)
     -- ═══════════════════════════════════════════════════════════════
+    
+    -- 💀 Death state - override everything
+    if self.isDead then
+        self.currentAnimation:update(dt)
+        return  -- Can't do anything when dead
+    end
+    
+    -- 🩹 Hurt state - override movement and attacks
+    if self.isHurt then
+        self.currentAnimation:update(dt)
+        
+        -- Update invincibility timer
+        if self.invincible then
+            self.invincibleTimer = self.invincibleTimer - dt
+            if self.invincibleTimer <= 0 then
+                self.invincible = false
+            end
+        end
+        
+        -- Check if hurt animation finished
+        if self.currentAnimation.status == "paused" then
+            self.isHurt = false
+            self:setState("idle")
+        end
+        return  -- Can't move or attack while hurt
+    end
+    
+    -- Update invincibility timer (when not hurt)
+    if self.invincible then
+        self.invincibleTimer = self.invincibleTimer - dt
+        if self.invincibleTimer <= 0 then
+            self.invincible = false
+        end
+    end
     
     -- 🕹️ Movement input
     local isMoving = false
@@ -288,9 +337,89 @@ end
 -- 🟥 DRAW FUNCTION
 function Samson:draw()
     if self.currentAnimation then
+        -- Flash white during invincibility frames
+        if self.invincible then
+            -- Flicker effect: visible/invisible every 0.1 seconds
+            local flashVisible = math.floor(self.invincibleTimer * 10) % 2 == 0
+            if flashVisible then
+                love.graphics.setColor(1, 1, 1, 0.5)  -- Semi-transparent
+            else
+                love.graphics.setColor(1, 1, 1, 1)  -- Normal
+            end
+        else
+            love.graphics.setColor(1, 1, 1, 1)  -- Normal color
+        end
+        
         self.currentAnimation:draw(self.images[self.state], self.x, self.y, 0, 3, 3, 32, 32)
+        
+        -- Reset color
+        love.graphics.setColor(1, 1, 1, 1)
     end
 end
 
+-- 💥 TAKE DAMAGE FUNCTION
+function Samson:takeDamage(amount)
+    if self.isDead then return false end  -- Can't damage the dead
+    
+    -- Check invincibility frames
+    if self.invincible then
+        return false  -- Damage blocked by i-frames
+    end
+    
+    -- Take damage
+    self.health = self.health - amount
+    
+    if self.health <= 0 then
+        -- Death
+        self.health = 0
+        self.isDead = true
+        self.isAttacking = false
+        self.isHurt = false  -- Clear hurt state
+        self.invincible = false  -- Clear invincibility
+        self.state = "death"
+        self.currentAnimation = self.animations.death[self.direction]
+        self.currentAnimation:gotoFrame(1)
+        self.currentAnimation:resume()  -- Make sure animation is playing
+    else
+        -- Hurt
+        self.isHurt = true
+        self.isAttacking = false  -- Cancel attack if hurt
+        self.invincible = true    -- Enable i-frames
+        self.invincibleTimer = 0.8  -- 0.8 seconds of invincibility
+        self.state = "hurt"
+        self.currentAnimation = self.animations.hurt[self.direction]
+        self.currentAnimation:gotoFrame(1)
+        self.currentAnimation:resume()  -- Make sure animation is playing
+    end
+    
+    return true  -- Damage was applied
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- 💚 HEALTH RECOVERY SYSTEM (To be implemented with enemies)
+-- ═══════════════════════════════════════════════════════════════
+-- System: RNG Health Drop on Enemy Kill
+-- 
+-- Base Mechanics:
+--   - 30-40% drop rate per enemy kill
+--   - Drops restore 10-20 HP (not full heal)
+--   - Health packs disappear after ~5 seconds if not collected
+--
+-- Smart RNG (Bad Luck Protection):
+--   - Increase drop chance when player.health < 25%
+--   - Example: Base 30% → 50% when low HP
+--   - Prevents frustrating dry streaks
+--
+-- Design Philosophy:
+--   - Rewards aggressive play (more kills = more chances)
+--   - Synergizes with skill ceiling (Triple Strike Cancel)
+--   - Maintains combat flow (no camping for health)
+--   - Biblical theme: Power through victory
+--
+-- Implementation Notes:
+--   - Call on enemy death: enemy:onDeath() → rollHealthDrop()
+--   - Health pack entity: position, sprite, timer, pickupRadius
+--   - Collision detection: if distance < radius → heal player
+-- ═══════════════════════════════════════════════════════════════
 
 return Samson
