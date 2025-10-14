@@ -1,16 +1,27 @@
 local Samson = require("samson")
+local Environment = require("environment")
+
 local player
+local environment
 
 function love.load()
+    love.window.setMode(1280, 720)  -- 🖥️ Set fixed window size
+    
     love.graphics.setDefaultFilter("nearest", "nearest") -- Pixel-perfect scaling
+    environment = Environment:new()
     player = Samson:new(400, 300)
 end
 
 function love.update(dt)
+    environment:update(dt)  -- 🆕 Update environment (STI needs this)
     player:update(dt)
 end
 
 function love.draw()
+    -- Draw environment first (background layer)
+    environment:draw()
+    
+    -- Draw player on top
     player:draw()
     
     -- ═══════════════════════════════════════════════════════════════

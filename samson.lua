@@ -350,7 +350,9 @@ function Samson:draw()
             love.graphics.setColor(1, 1, 1, 1)  -- Normal color
         end
         
-        self.currentAnimation:draw(self.images[self.state], self.x, self.y, 0, 3, 3, 32, 32)
+        -- Scale character to match map scale (approximately 0.89x)
+        local mapScale = 0.89  -- Same as environment scale
+        self.currentAnimation:draw(self.images[self.state], self.x, self.y, 0, 3 * mapScale, 3 * mapScale, 32, 32)
         
         -- Reset color
         love.graphics.setColor(1, 1, 1, 1)
