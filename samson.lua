@@ -11,6 +11,10 @@ function Samson:new(x, y)
     self.y = y
     self.speed = 100
     self.health = 100
+    self.width = 32  -- Character width for collision
+    self.height = 32 -- Character height for collision
+    self.environment = nil -- Will be set by main.lua
+    self.collider = nil -- Will be set by main.lua
 
     -- 🟢 Movement and state control
     self.state = "idle"         -- Options: idle, walk, run, hurt, death, etc.
@@ -140,6 +144,21 @@ function Samson:setDirection(newDir)
         self.currentAnimation = self.animations[self.state][self.direction]
         self.currentAnimation:gotoFrame(1)
     end
+end
+
+-- 🚧 COLLISION CHECKING FUNCTION
+function Samson:canMoveTo(newX, newY)
+    if not self.environment then return true end -- No environment = no collision
+    
+    -- Check if the new position would collide with solid tiles
+    local canMove = not self.environment:checkCollision(newX, newY, self.width, self.height)
+    
+    -- 🐛 DEBUG: Print movement info
+    if not canMove then
+        print("MOVEMENT BLOCKED at (" .. newX .. "," .. newY .. ")")
+    end
+    
+    return canMove
 end
 
 -- 🟨 UPDATE LOOP
@@ -275,8 +294,13 @@ function Samson:update(dt)
             
             -- Apply speed multiplier for running
             local speedMultiplier = isRunning and 2 or 1
-            self.x = self.x + dx * self.speed * speedMultiplier * dt
-            self.y = self.y + dy * self.speed * speedMultiplier * dt
+            local vx = dx * self.speed * speedMultiplier
+            local vy = dy * self.speed * speedMultiplier
+            
+            -- Set collider velocity
+            if self.collider then
+                self.collider:setLinearVelocity(vx, vy)
+            end
             
             -- Set animation state based on movement type
             if isRunning then
@@ -289,6 +313,11 @@ function Samson:update(dt)
                 end
             end
         else
+            -- Stop movement
+            if self.collider then
+                self.collider:setLinearVelocity(0, 0)
+            end
+            
             if self.state ~= "idle" then
                 self:setState("idle")
             end
@@ -310,8 +339,18 @@ function Samson:update(dt)
                 speedMultiplier = 0  -- Idle attack = no movement
             end
             
-            self.x = self.x + dx * self.speed * speedMultiplier * dt
-            self.y = self.y + dy * self.speed * speedMultiplier * dt
+            local vx = dx * self.speed * speedMultiplier
+            local vy = dy * self.speed * speedMultiplier
+            
+            -- Set collider velocity during attacks
+            if self.collider then
+                self.collider:setLinearVelocity(vx, vy)
+            end
+        else
+            -- Stop movement during attacks if no input
+            if self.collider then
+                self.collider:setLinearVelocity(0, 0)
+            end
         end
     end
 
@@ -332,6 +371,12 @@ function Samson:update(dt)
             end
         end
     end
+    
+    -- 🔄 Sync player position with collider position
+    if self.collider then
+        self.x = self.collider:getX()
+        self.y = self.collider:getY()
+    end
 end
 
 -- 🟥 DRAW FUNCTION
@@ -350,9 +395,9 @@ function Samson:draw()
             love.graphics.setColor(1, 1, 1, 1)  -- Normal color
         end
         
-        -- Scale character to match map scale (approximately 0.89x)
-        local mapScale = 0.89  -- Same as environment scale
-        self.currentAnimation:draw(self.images[self.state], self.x, self.y, 0, 3 * mapScale, 3 * mapScale, 32, 32)
+            -- Force integer draw position to prevent sub-pixel rendering gaps
+            -- Scale down to be proportional to map objects (was 3x, now 2x)
+            self.currentAnimation:draw(self.images[self.state], math.floor(self.x), math.floor(self.y), 0, 2, 2, 32, 32)
         
         -- Reset color
         love.graphics.setColor(1, 1, 1, 1)
