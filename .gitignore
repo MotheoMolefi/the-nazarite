@@ -42,3 +42,6 @@ luac.out
 # Tilesets (Licensed - not for distribution)
 assets/environment/Desert Tileset/
 
+# Reference code (not original work)
+legend-of-lua-main/
+

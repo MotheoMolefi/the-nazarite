@@ -397,7 +397,7 @@ function Samson:draw()
         
             -- Force integer draw position to prevent sub-pixel rendering gaps
             -- Scale down to be proportional to map objects (was 3x, now 2x)
-            self.currentAnimation:draw(self.images[self.state], math.floor(self.x), math.floor(self.y), 0, 2, 2, 32, 32)
+            self.currentAnimation:draw(self.images[self.state], math.floor(self.x), math.floor(self.y + 4), 0, 2, 2, 32, 32)
         
         -- Reset color
         love.graphics.setColor(1, 1, 1, 1)
