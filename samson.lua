@@ -24,6 +24,8 @@ function Samson:new(x, y)
     self.isDead = false         -- Track if dead
     self.invincible = false     -- Track invincibility frames
     self.invincibleTimer = 0    -- I-frame timer
+    self.attackHitApplied = false  -- Track if damage has been applied this attack
+    self.attackDamageTimer = 0  -- Timer for when to apply damage during attack
 
     -- 🖼️ Load sprite sheets
     self.images = {
@@ -206,6 +208,18 @@ function Samson:update(dt)
         end
     end
     
+    -- Update attack damage timer
+    if self.isAttacking and self.attackDamageTimer > 0 and not self.attackHitApplied then
+        self.attackDamageTimer = self.attackDamageTimer - dt
+        if self.attackDamageTimer <= 0 then
+            -- Time to apply damage!
+            self.attackHitApplied = true
+            if self.enemiesRef then
+                self:applyAttackDamage(self.enemiesRef)
+            end
+        end
+    end
+    
     -- 🕹️ Movement input
     local isMoving = false
     local isRunning = love.keyboard.isDown("lshift") or love.keyboard.isDown("rshift")
@@ -252,6 +266,8 @@ function Samson:update(dt)
     
     if spacePressed and not self.isAttacking then
         self.isAttacking = true
+        self.attackHitApplied = false  -- Reset hit flag for new attack
+        self.attackDamageTimer = 0.15  -- Apply damage 0.15 seconds into the attack
         
         -- Choose attack type based on current movement state
         local attackState = "attack"  -- Default: idle attack
@@ -364,9 +380,12 @@ function Samson:update(dt)
             if spacePressed then
                 self.currentAnimation:gotoFrame(1)
                 self.currentAnimation:resume()
+                self.attackHitApplied = false  -- Reset for new attack
+                self.attackDamageTimer = 0.15  -- Reset timer for new attack
             else
                 -- Spacebar released, end attack
                 self.isAttacking = false
+                self.attackHitApplied = false
                 self:setState("idle")
             end
         end
@@ -405,7 +424,7 @@ function Samson:draw()
 end
 
 -- 💥 TAKE DAMAGE FUNCTION
-function Samson:takeDamage(amount)
+function Samson:takeDamage(amount, attackerX, attackerY)
     if self.isDead then return false end  -- Can't damage the dead
     
     -- Check invincibility frames
@@ -440,6 +459,35 @@ function Samson:takeDamage(amount)
     end
     
     return true  -- Damage was applied
+end
+
+-- ⚔️ APPLY ATTACK DAMAGE TO ENEMIES (called once per attack)
+function Samson:applyAttackDamage(enemies)
+    -- Attack range (sword reach)
+    local attackRange = 50  -- Base range
+    local directionOffset = 20  -- Sword extends in attack direction
+    local totalRange = attackRange + directionOffset
+    
+    -- Check each enemy and apply damage once
+    for i, enemy in ipairs(enemies) do
+        if not enemy.dead and enemy.physics then
+            local ex, ey = enemy.physics:getX(), enemy.physics:getY()
+            local distance = math.sqrt((ex - self.x)^2 + (ey - self.y)^2)
+            
+            -- Check if within attack range
+            if distance < totalRange then
+                -- Deal damage (different amounts based on attack type)
+                local damage = 1  -- Base damage
+                if self.state == "run_attack" then
+                    damage = 2  -- Running attack does more damage
+                end
+                
+                -- Apply damage with knockback (pass Samson's position)
+                enemy:takeDamage(damage, self.x, self.y)
+                print("⚔️ Samson hit enemy for " .. damage .. " damage!")
+            end
+        end
+    end
 end
 
 -- ═══════════════════════════════════════════════════════════════

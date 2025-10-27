@@ -56,6 +56,10 @@ end
 function love.update(dt)
     world:update(dt)  -- Update physics world
     environment:update(dt)  -- 🆕 Update environment (STI needs this)
+    
+    -- Give player reference to enemies for attack damage
+    player.enemiesRef = enemies
+    
     player:update(dt)
     
     -- 🎯 Spawn timer system
@@ -71,6 +75,19 @@ function love.update(dt)
     for i, enemy in ipairs(enemies) do
         enemy:update(dt)
         enemy:checkAttackDamage(player)
+    end
+    
+    -- 🎯 Remove dead enemies after fade out completes
+    for i = #enemies, 1, -1 do
+        local enemy = enemies[i]
+        if enemy.dead and enemy.alpha <= 0 then
+            -- Fade out finished, remove enemy
+            if enemy.physics then
+                enemy.physics:destroy()
+            end
+            table.remove(enemies, i)
+            print("💀 Removed dead Philistine (faded out)")
+        end
     end
 end
 
@@ -151,6 +168,8 @@ function love.keypressed(key)
         player.environment = environment
         player.collider = world:newBSGRectangleCollider(player.x, player.y, 15, 40, 4)
         player.collider:setFixedRotation(true)
+        player.collider:setFriction(0.8)
+        player.collider:setLinearDamping(0.9)
         if oldCollider then
             oldCollider:destroy()
         end

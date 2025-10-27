@@ -36,6 +36,10 @@ function Philistine:new(x, y, level)
     -- 🎯 Legend-of-lua state system
     self.state = 1  -- 1=wander stopped, 1.1=wander moving, 99=alert, 100=chase
     self.dead = false
+    self.deathFadeDelay = 0.6  -- Wait before fading (seconds)
+    self.deathFadeTimer = 0  -- Timer for fade out effect
+    self.deathFadeDuration = 0.5  -- How long to fade (seconds)
+    self.alpha = 1.0  -- Transparency (1 = solid, 0 = invisible)
     self.chase = true
     self.dir = {x = 0, y = 1}  -- Movement direction vector
     self.animTimer = 0  -- Alert timer
@@ -118,17 +122,17 @@ function Philistine:new(x, y, level)
             right = anim8.newAnimation(self.grids.walk_attack('1-6', 3), 0.1, 'pauseAtEnd'),
             up    = anim8.newAnimation(self.grids.walk_attack('1-6', 4), 0.1, 'pauseAtEnd'),
         },
-        hurt = {
-            down  = anim8.newAnimation(self.grids.hurt('1-5', 1), 0.1),
-            left  = anim8.newAnimation(self.grids.hurt('1-5', 2), 0.1),
-            right = anim8.newAnimation(self.grids.hurt('1-5', 3), 0.1),
-            up    = anim8.newAnimation(self.grids.hurt('1-5', 4), 0.1),
-        },
+            hurt = {
+                down  = anim8.newAnimation(self.grids.hurt('1-5', 1), 0.1, 'pauseAtEnd'),
+                left  = anim8.newAnimation(self.grids.hurt('1-5', 2), 0.1, 'pauseAtEnd'),
+                right = anim8.newAnimation(self.grids.hurt('1-5', 3), 0.1, 'pauseAtEnd'),
+                up    = anim8.newAnimation(self.grids.hurt('1-5', 4), 0.1, 'pauseAtEnd'),
+            },
         death = {
-            down  = anim8.newAnimation(self.grids.death('1-7', 1), 0.15),
-            left  = anim8.newAnimation(self.grids.death('1-7', 2), 0.15),
-            right = anim8.newAnimation(self.grids.death('1-7', 3), 0.15),
-            up    = anim8.newAnimation(self.grids.death('1-7', 4), 0.15),
+            down  = anim8.newAnimation(self.grids.death('1-7', 1), 0.15, 'pauseAtEnd'),
+            left  = anim8.newAnimation(self.grids.death('1-7', 2), 0.15, 'pauseAtEnd'),
+            right = anim8.newAnimation(self.grids.death('1-7', 3), 0.15, 'pauseAtEnd'),
+            up    = anim8.newAnimation(self.grids.death('1-7', 4), 0.15, 'pauseAtEnd'),
         }
     }
     
@@ -195,7 +199,8 @@ function Philistine:checkAttackDamage(player)
     
     -- Check if close enough and dealing damage on first check
     if distance < totalHitRange and self.lastAttackDamageFrame == 0 then
-        player:takeDamage(self.attackDamage)
+        -- Apply damage with knockback (pass Philistine's position)
+        player:takeDamage(self.attackDamage, ex, ey)
         self.lastAttackDamageFrame = 1
         print("Philistine hit Samson for " .. self.attackDamage .. " damage!")
     elseif distance >= totalHitRange and self.lastAttackDamageFrame > 0 then
@@ -206,7 +211,50 @@ end
 
 -- 🟨 UPDATE LOOP (simple like Samson)
 function Philistine:update(dt)
-    if self.dead then return end
+    -- Check if death animation is playing
+    if self.dead then
+        -- Update death animation
+        if self.currentAnimation then
+            self.currentAnimation:update(dt)
+            
+            -- Check if death animation finished
+            if self.currentAnimation.status == "paused" then
+                -- Wait for delay, then start fading out
+                self.deathFadeTimer = self.deathFadeTimer + dt
+                
+                if self.deathFadeTimer > self.deathFadeDelay then
+                    -- Calculate fade (subtract delay from timer)
+                    local fadeProgress = (self.deathFadeTimer - self.deathFadeDelay) / self.deathFadeDuration
+                    self.alpha = 1.0 - fadeProgress
+                    
+                    -- Clamp alpha to 0-1 range
+                    if self.alpha < 0 then
+                        self.alpha = 0
+                    end
+                end
+            end
+        end
+        return  -- Don't do anything else while dead
+    end
+    
+    -- Check if hurt animation is playing
+    if self.currentAnimation == self.animations.hurt.down or
+       self.currentAnimation == self.animations.hurt.left or
+       self.currentAnimation == self.animations.hurt.right or
+       self.currentAnimation == self.animations.hurt.up then
+        -- Update hurt animation
+        self.currentAnimation:update(dt)
+        
+        -- Check if hurt animation finished
+        if self.currentAnimation.status == "paused" then
+            -- Return to idle
+            local newAnimation = self.animations.idle[self.direction]
+            self.currentAnimation = newAnimation
+            self.currentAnimation:gotoFrame(1)
+            self.currentAnimation:resume()
+        end
+        return  -- Don't do anything else while hurt
+    end
     
     -- Check if target is dead
     if self.target and self.target.isDead then
@@ -329,6 +377,61 @@ function Philistine:update(dt)
 end
 
 
+-- 💥 TAKE DAMAGE FUNCTION
+function Philistine:takeDamage(amount, attackerX, attackerY)
+    if self.dead then return false end  -- Can't damage the dead
+    
+    -- Take damage
+    self.health = self.health - amount
+    
+    if self.health <= 0 then
+        -- Death
+        self.health = 0
+        self.dead = true
+        self.isAttacking = false
+        
+        -- Stop movement
+        if self.physics then
+            self.physics:setLinearVelocity(0, 0)
+        end
+        
+        -- Switch to death animation
+        self.currentAnimation = self.animations.death[self.direction]
+        self.currentAnimation:gotoFrame(1)
+        self.currentAnimation:resume()
+        
+        print("💀 Philistine killed!")
+    else
+        -- Hurt - play hurt animation
+        self.isAttacking = false  -- Cancel attack when hurt
+        
+        -- Apply knockback away from attacker
+        if self.physics and attackerX and attackerY then
+            local ex, ey = self.physics:getX(), self.physics:getY()
+            local dx = ex - attackerX
+            local dy = ey - attackerY
+            local distance = math.sqrt(dx^2 + dy^2)
+            
+            if distance > 0 then
+                -- Normalize and apply knockback force
+                dx = dx / distance
+                dy = dy / distance
+                local knockbackForce = 200  -- Adjust this for stronger/weaker knockback
+                self.physics:applyLinearImpulse(dx * knockbackForce, dy * knockbackForce)
+            end
+        end
+        
+        -- Switch to hurt animation
+        self.currentAnimation = self.animations.hurt[self.direction]
+        self.currentAnimation:gotoFrame(1)
+        self.currentAnimation:resume()
+        
+        print("🩸 Philistine took " .. amount .. " damage! (" .. self.health .. "/" .. self.maxHealth .. " HP)")
+    end
+    
+    return true  -- Damage was applied
+end
+
 -- 🟥 DRAW FUNCTION (chase and attack)
 function Philistine:draw()
     if self.currentAnimation and self.physics then
@@ -340,10 +443,20 @@ function Philistine:draw()
             imageToUse = self.images.walk
         elseif self.currentAnimation == self.animations.walk_attack[self.direction] then
             imageToUse = self.images.walk_attack
+        elseif self.currentAnimation == self.animations.hurt[self.direction] then
+            imageToUse = self.images.hurt
+        elseif self.currentAnimation == self.animations.death[self.direction] then
+            imageToUse = self.images.death
         end
+        
+        -- Apply transparency (for death fade)
+        love.graphics.setColor(1, 1, 1, self.alpha)
         
         -- Draw with scaling (exact same as Samson)
         self.currentAnimation:draw(imageToUse, math.floor(ex), math.floor(ey + 4), 0, 2, 2, 32, 32)
+        
+        -- Reset color
+        love.graphics.setColor(1, 1, 1, 1)
     end
 end
 
