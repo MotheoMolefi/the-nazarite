@@ -70,44 +70,7 @@ function love.update(dt)
     -- 🎯 Update enemies
     for i, enemy in ipairs(enemies) do
         enemy:update(dt)
-        
-        -- Keep enemies within map boundaries
-        if enemy.physics then
-            local ex = enemy.physics:getX()
-            local ey = enemy.physics:getY()
-            
-            -- Map boundaries
-            local minX, minY = 50, 50
-            local maxX, maxY = 1150, 650
-            
-            -- Clamp position
-            if ex < minX then
-                enemy.physics:setX(minX)
-                enemy.physics:setLinearVelocity(0, enemy.physics:getLinearVelocity())
-            elseif ex > maxX then
-                enemy.physics:setX(maxX)
-                enemy.physics:setLinearVelocity(0, enemy.physics:getLinearVelocity())
-            end
-            
-            if ey < minY then
-                enemy.physics:setY(minY)
-                enemy.physics:setLinearVelocity(enemy.physics:getLinearVelocity(), 0)
-            elseif ey > maxY then
-                enemy.physics:setY(maxY)
-                enemy.physics:setLinearVelocity(enemy.physics:getLinearVelocity(), 0)
-            end
-        end
-        
-    end
-    
-    -- Clean up dead enemies
-    for i = #enemies, 1, -1 do
-        if enemies[i].dead then
-            if enemies[i].physics then
-                enemies[i].physics:destroy()
-            end
-            table.remove(enemies, i)
-        end
+        enemy:checkAttackDamage(player)
     end
 end
 
@@ -183,7 +146,14 @@ function love.keypressed(key)
         end
     elseif key == "r" then
         -- Reset/Respawn player
+        local oldCollider = player.collider
         player = Samson:new(400, 300)
+        player.environment = environment
+        player.collider = world:newBSGRectangleCollider(player.x, player.y, 15, 40, 4)
+        player.collider:setFixedRotation(true)
+        if oldCollider then
+            oldCollider:destroy()
+        end
         print("🔄 Player respawned!")
     elseif key == "k" then
         -- Instant kill (for testing death animation)

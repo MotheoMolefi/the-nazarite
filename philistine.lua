@@ -41,6 +41,15 @@ function Philistine:new(x, y, level)
     self.animTimer = 0  -- Alert timer
     self.direction = "down"  -- Direction for animation (like Samson)
     
+    -- ⚔️ Attack system (like Samson)
+    self.isAttacking = false
+    self.attackRange = 60  -- Distance to start attacking
+    self.attackDamage = 10  -- Damage per attack
+    self.lastAttackDamageFrame = 0  -- Track which frames have dealt damage
+    self.attackCooldown = 0  -- Cooldown before can attack again
+    self.minCooldown = 1.5  -- Minimum seconds between attacks
+    self.maxCooldown = 3.0  -- Maximum seconds between attacks
+    
     -- 🚶 Wander behavior (exact legend-of-lua logic)
     self.startX = x
     self.startY = y
@@ -98,16 +107,16 @@ function Philistine:new(x, y, level)
             up    = anim8.newAnimation(self.grids.walk('1-6', 4), 0.1),
         },
         attack = {
-            down  = anim8.newAnimation(self.grids.attack('1-7', 1), 0.08),
-            left  = anim8.newAnimation(self.grids.attack('1-7', 2), 0.08),
-            right = anim8.newAnimation(self.grids.attack('1-7', 3), 0.08),
-            up    = anim8.newAnimation(self.grids.attack('1-7', 4), 0.08),
+            down  = anim8.newAnimation(self.grids.attack('1-7', 1), 0.1, 'pauseAtEnd'),
+            left  = anim8.newAnimation(self.grids.attack('1-7', 2), 0.1, 'pauseAtEnd'),
+            right = anim8.newAnimation(self.grids.attack('1-7', 3), 0.1, 'pauseAtEnd'),
+            up    = anim8.newAnimation(self.grids.attack('1-7', 4), 0.1, 'pauseAtEnd'),
         },
         walk_attack = {
-            down  = anim8.newAnimation(self.grids.walk_attack('1-6', 1), 0.08),
-            left  = anim8.newAnimation(self.grids.walk_attack('1-6', 2), 0.08),
-            right = anim8.newAnimation(self.grids.walk_attack('1-6', 3), 0.08),
-            up    = anim8.newAnimation(self.grids.walk_attack('1-6', 4), 0.08),
+            down  = anim8.newAnimation(self.grids.walk_attack('1-6', 1), 0.1, 'pauseAtEnd'),
+            left  = anim8.newAnimation(self.grids.walk_attack('1-6', 2), 0.1, 'pauseAtEnd'),
+            right = anim8.newAnimation(self.grids.walk_attack('1-6', 3), 0.1, 'pauseAtEnd'),
+            up    = anim8.newAnimation(self.grids.walk_attack('1-6', 4), 0.1, 'pauseAtEnd'),
         },
         hurt = {
             down  = anim8.newAnimation(self.grids.hurt('1-5', 1), 0.1),
@@ -130,9 +139,92 @@ function Philistine:new(x, y, level)
     return self
 end
 
--- 🟨 UPDATE LOOP (simple chase)
+function Philistine:setDirection(newDir)
+    if self.direction ~= newDir and self.currentAnimation then
+        self.direction = newDir
+        
+        -- Update to correct directional animation based on current state
+        if self.isAttacking then
+            self.currentAnimation = self.animations.walk_attack[newDir]
+        elseif self.currentAnimation == self.animations.idle.down or
+               self.currentAnimation == self.animations.idle.left or
+               self.currentAnimation == self.animations.idle.right or
+               self.currentAnimation == self.animations.idle.up then
+            self.currentAnimation = self.animations.idle[newDir]
+        else
+            self.currentAnimation = self.animations.walk[newDir]
+        end
+        
+        self.currentAnimation:gotoFrame(1)
+    end
+end
+
+-- 🗡️ Check if attack should damage player
+function Philistine:checkAttackDamage(player)
+    if not self.isAttacking or not self.currentAnimation or not self.physics then
+        return
+    end
+    
+    -- Don't damage dead players
+    if player.isDead then
+        return
+    end
+    
+    -- Get positions
+    local ex, ey = self.physics:getX(), self.physics:getY()
+    local px, py = player.x, player.y
+    
+    -- Dynamic hit range: extend forward in attack direction
+    local hitRange = 50  -- Base range
+    local directionOffset = 0
+    
+    -- Extend range in attack direction (sword reach)
+    if self.direction == "down" then
+        directionOffset = 20  -- Sword extends downward
+    elseif self.direction == "up" then
+        directionOffset = 20  -- Sword extends upward
+    elseif self.direction == "left" then
+        directionOffset = 20  -- Sword extends left
+    elseif self.direction == "right" then
+        directionOffset = 20  -- Sword extends right
+    end
+    
+    local totalHitRange = hitRange + directionOffset
+    
+    local distance = math.sqrt((px - ex)^2 + (py - ey)^2)
+    
+    -- Check if close enough and dealing damage on first check
+    if distance < totalHitRange and self.lastAttackDamageFrame == 0 then
+        player:takeDamage(self.attackDamage)
+        self.lastAttackDamageFrame = 1
+        print("Philistine hit Samson for " .. self.attackDamage .. " damage!")
+    elseif distance >= totalHitRange and self.lastAttackDamageFrame > 0 then
+        -- Reset when player moves away
+        self.lastAttackDamageFrame = 0
+    end
+end
+
+-- 🟨 UPDATE LOOP (simple like Samson)
 function Philistine:update(dt)
     if self.dead then return end
+    
+    -- Check if target is dead
+    if self.target and self.target.isDead then
+        -- Stop attacking and go idle
+        self.isAttacking = false
+        self.physics:setLinearVelocity(0, 0)
+        local newAnimation = self.animations.idle[self.direction]
+        if self.currentAnimation ~= newAnimation then
+            self.currentAnimation = newAnimation
+            self.currentAnimation:gotoFrame(1)
+        end
+        return
+    end
+    
+    -- Update cooldown
+    if self.attackCooldown > 0 then
+        self.attackCooldown = self.attackCooldown - dt
+    end
     
     -- Simple detection and chase
     if self.physics and self.target then
@@ -142,7 +234,7 @@ function Philistine:update(dt)
         
         -- Detection radius
         if distance < self.viewDistance then
-            -- Chase player
+            -- Always chase player
             local dx = px - ex
             local dy = py - ey
             local norm = math.sqrt(dx^2 + dy^2)
@@ -156,38 +248,52 @@ function Philistine:update(dt)
                 local vy = dy * self.speed
                 self.physics:setLinearVelocity(vx, vy)
                 
-                -- Set direction based on movement (like Samson)
+                -- Set direction based on movement (exact same as Samson)
+                local newDir = "down"
                 if math.abs(dx) > math.abs(dy) then
-                    -- Horizontal movement is stronger
-                    if dx > 0 then
-                        self.direction = "right"
-                        self.scaleX = 1
-                    else
-                        self.direction = "left"
-                        self.scaleX = 1  -- Don't flip, use proper left animation
-                    end
+                    newDir = dx > 0 and "right" or "left"
+                    self.scaleX = 1
                 else
-                    -- Vertical movement is stronger
-                    if dy > 0 then
-                        self.direction = "down"
-                    else
-                        self.direction = "up"
-                    end
+                    newDir = dy > 0 and "down" or "up"
                 end
                 
-                -- Debug output
-                print("Philistine direction: " .. self.direction .. " (dx: " .. dx .. ", dy: " .. dy .. ")")
+                -- Use setDirection helper
+                self:setDirection(newDir)
             end
             
-            -- Switch to walk animation when chasing
-            local newAnimation = self.animations.walk[self.direction]
-            if self.currentAnimation ~= newAnimation then
+            -- Update animation based on state and direction (direction takes priority)
+            if distance < self.attackRange and not self.isAttacking and self.attackCooldown <= 0 then
+                -- Start attacking
+                print("🗡️ ATTACK CONDITIONS MET! Distance: " .. distance .. ", isAttacking: " .. tostring(self.isAttacking) .. ", cooldown: " .. self.attackCooldown)
+                self.isAttacking = true
+                self.lastAttackDamageFrame = 0  -- Reset damage counter for new attack
+                
+                local newAnimation = self.animations.walk_attack[self.direction]
                 self.currentAnimation = newAnimation
                 self.currentAnimation:gotoFrame(1)
+                self.currentAnimation:resume()  -- Make sure it starts fresh!
+                print("🗡️ Attack animation started!")
+            elseif distance >= self.attackRange and self.isAttacking then
+                -- Out of range, stop attacking
+                self.isAttacking = false
+                local newAnimation = self.animations.walk[self.direction]
+                if self.currentAnimation ~= newAnimation then
+                    self.currentAnimation = newAnimation
+                    self.currentAnimation:gotoFrame(1)
+                end
+                print("Philistine stopped attacking (out of range)")
+            elseif not self.isAttacking then
+                -- Not attacking, use walk animation
+                local newAnimation = self.animations.walk[self.direction]
+                if self.currentAnimation ~= newAnimation then
+                    self.currentAnimation = newAnimation
+                    self.currentAnimation:gotoFrame(1)
+                end
             end
         else
             -- Stop movement when not chasing
             self.physics:setLinearVelocity(0, 0)
+            self.isAttacking = false
             
             -- Switch to idle animation when not chasing
             local newAnimation = self.animations.idle[self.direction]
@@ -196,28 +302,48 @@ function Philistine:update(dt)
                 self.currentAnimation:gotoFrame(1)
             end
         end
-    end
-    
-    -- Update animation
-    if self.currentAnimation then
-        self.currentAnimation:update(dt)
+        
+        -- Handle attack animation finishing - switch to walk
+        if self.isAttacking and self.currentAnimation and self.currentAnimation.status == "paused" then
+            -- Attack animation finished - always switch back to walk
+            self.isAttacking = false
+            
+            -- Random cooldown between min and max
+            local randomCooldown = self.minCooldown + math.random() * (self.maxCooldown - self.minCooldown)
+            self.attackCooldown = randomCooldown
+            
+            -- Switch to walk animation and resume it
+            local newAnimation = self.animations.walk[self.direction]
+            self.currentAnimation = newAnimation
+            self.currentAnimation:gotoFrame(1)
+            self.currentAnimation:resume()  -- Make sure it's playing!
+            
+            print("Philistine attack finished, returning to walk (cooldown: " .. string.format("%.1f", randomCooldown) .. "s)")
+        end
+        
+        -- Update animation (ALWAYS at the end, like Samson)
+        if self.currentAnimation then
+            self.currentAnimation:update(dt)
+        end
     end
 end
 
 
--- 🟥 DRAW FUNCTION (simple chase)
+-- 🟥 DRAW FUNCTION (chase and attack)
 function Philistine:draw()
     if self.currentAnimation and self.physics then
         local ex, ey = self.physics:getX(), self.physics:getY()
         
-        -- Choose image based on current animation
+        -- Choose image based on current animation (like Samson)
         local imageToUse = self.images.idle
         if self.currentAnimation == self.animations.walk[self.direction] then
             imageToUse = self.images.walk
+        elseif self.currentAnimation == self.animations.walk_attack[self.direction] then
+            imageToUse = self.images.walk_attack
         end
         
-        -- Draw with scaling
-        self.currentAnimation:draw(imageToUse, math.floor(ex), math.floor(ey), 0, self.scaleX * 2, 2, 32, 32)
+        -- Draw with scaling (exact same as Samson)
+        self.currentAnimation:draw(imageToUse, math.floor(ex), math.floor(ey + 4), 0, 2, 2, 32, 32)
     end
 end
 
