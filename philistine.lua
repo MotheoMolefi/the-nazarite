@@ -41,6 +41,14 @@ function Philistine:new(x, y, level)
     self.deathFadeDuration = 0.5  -- How long to fade (seconds)
     self.alpha = 1.0  -- Transparency (1 = solid, 0 = invisible)
     self.chase = true
+    
+    -- 🎬 Spawn animation system
+    self.isSpawning = false  -- Set by main.lua if walk-in spawn
+    self.spawnTarget = nil   -- Target position to walk to
+    self.spawnFadeDuration = 0.8
+    self.spawnFadeTimer = 0
+    self.spawnComplete = false  -- Flag to prevent spawn code from running again
+    self.spawnCooldown = 0  -- Delay before AI starts after spawn
     self.dir = {x = 0, y = 1}  -- Movement direction vector
     self.animTimer = 0  -- Alert timer
     self.direction = "down"  -- Direction for animation (like Samson)
@@ -211,6 +219,101 @@ end
 
 -- 🟨 UPDATE LOOP (simple like Samson)
 function Philistine:update(dt)
+    -- 🎬 Handle spawn walk-in animation
+    if self.isSpawning and self.spawnTarget and not self.spawnComplete then
+        -- Fade in
+        self.spawnFadeTimer = self.spawnFadeTimer + dt
+        self.alpha = math.min(1.0, self.spawnFadeTimer / self.spawnFadeDuration)
+        
+        -- Debug: print current position
+        if self.spawnFadeTimer < 0.1 then
+            local ex, ey = self.physics:getX(), self.physics:getY()
+            print("🎬 Spawning at (" .. ex .. ", " .. ey .. "), walking to (" .. self.spawnTarget.x .. ", " .. self.spawnTarget.y .. "), alpha: " .. self.alpha)
+        end
+        
+        -- Walk toward spawn target
+        local ex, ey = self.physics:getX(), self.physics:getY()
+        local dx = self.spawnTarget.x - ex
+        local dy = self.spawnTarget.y - ey
+        local distance = math.sqrt(dx^2 + dy^2)
+        
+        if distance > 10 then
+            -- Still walking to target
+            local norm = math.sqrt(dx^2 + dy^2)
+            if norm > 0 then
+                dx = dx / norm
+                dy = dy / norm
+                
+                -- Move toward target
+                local vx = dx * self.speed
+                local vy = dy * self.speed
+                self.physics:setLinearVelocity(vx, vy)
+                
+                -- Set direction for animation
+                local newDir = "down"
+                if math.abs(dx) > math.abs(dy) then
+                    newDir = dx > 0 and "right" or "left"
+                else
+                    newDir = dy > 0 and "down" or "up"
+                end
+                self.direction = newDir
+                
+                -- Use walk animation
+                local newAnimation = self.animations.walk[self.direction]
+                if self.currentAnimation ~= newAnimation then
+                    self.currentAnimation = newAnimation
+                    self.currentAnimation:gotoFrame(1)
+                end
+            end
+        else
+            -- Reached target, stop spawning COMPLETELY
+            self.spawnComplete = true  -- LOCK spawn as complete
+            self.isSpawning = false
+            self.spawnTarget = nil  -- Clear spawn target
+            self.spawnFadeTimer = 999  -- Prevent fade from continuing
+            self.spawnCooldown = 0.5  -- Wait 0.5 seconds before AI starts
+            self.physics:setLinearVelocity(0, 0)
+            self.alpha = 1.0  -- Fully visible
+            
+            -- Re-enable collision with walls
+            self.physics:setType('dynamic')
+            
+            -- Switch to idle animation
+            local idleAnim = self.animations.idle[self.direction]
+            if self.currentAnimation ~= idleAnim then
+                self.currentAnimation = idleAnim
+                self.currentAnimation:gotoFrame(1)
+            end
+            
+            print("✅ Philistine spawn COMPLETE - locked! Direction: " .. self.direction)
+        end
+        
+        -- Update animation
+        if self.currentAnimation then
+            self.currentAnimation:update(dt)
+        end
+        
+        return  -- Don't do normal AI while spawning
+    end
+    
+    -- Handle spawn cooldown (delay before AI starts)
+    if self.spawnCooldown > 0 then
+        self.spawnCooldown = self.spawnCooldown - dt
+        self.alpha = 1.0  -- Stay solid
+        
+        -- Update idle animation
+        if self.currentAnimation then
+            self.currentAnimation:update(dt)
+        end
+        
+        return  -- Don't do AI while cooling down
+    end
+    
+    -- Ensure alpha is 1.0 for normal enemies (not spawning, not dead)
+    if not self.dead and not self.isSpawning then
+        self.alpha = 1.0
+    end
+    
     -- Check if death animation is playing
     if self.dead then
         -- Update death animation

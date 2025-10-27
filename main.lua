@@ -9,7 +9,15 @@ local world
 local enemies = {}
 local spawnTimer = 0
 local spawnInterval = 2.0
-local maxEnemies = 1  -- Just one for debugging
+local maxEnemies = 3  -- One per spawn point
+
+-- 🎯 Spawn points (3 locations around the map)
+local spawnPoints = {
+    {x = 626, y = 170, instant = false, spawnFrom = {x = 626, y = 140}},  -- Cave (top-center) - walk in from top
+    {x = 990, y = 70, instant = false, spawnFrom = {x = 990, y = 40}},   -- Cave 2 (top-right) - walk in from top
+    {x = 125, y = 50, instant = false, spawnFrom = {x = 125, y = 10}}  -- Top-left (sand hill) - walk in from top
+}
+local currentSpawnIndex = 1  -- Track which spawn point to use next
 
 function love.load()
     love.window.setMode(1200, 720)  -- 🖥️ Match actual map content width (1200px)
@@ -36,7 +44,7 @@ function love.load()
 end
 
 -- 🎯 Spawn enemy function
-function spawnEnemy(x, y, level)
+function spawnEnemy(x, y, level, spawnData)
     local enemy = Philistine:new(x, y, level or 1)
     
     -- Set up physics collider (dynamic = can collide with walls)
@@ -48,9 +56,29 @@ function spawnEnemy(x, y, level)
     
     -- Set target and add to enemies list
     enemy.target = player
-    table.insert(enemies, enemy)
     
-    print("Spawned Level " .. (level or 1) .. " Philistine at (" .. x .. ", " .. y .. ")")
+    -- Handle spawn animation (walk-in + fade)
+    if spawnData and not spawnData.instant then
+        enemy.isSpawning = true
+        enemy.spawnTarget = {x = x, y = y}  -- Where to walk to
+        enemy.alpha = 0  -- Start invisible
+        enemy.spawnFadeDuration = 0.8  -- Fade in over 0.8 seconds
+        enemy.spawnFadeTimer = 0
+        
+        -- Move enemy to spawn-from position
+        enemy.x = spawnData.spawnFrom.x
+        enemy.y = spawnData.spawnFrom.y
+        enemy.physics:setPosition(spawnData.spawnFrom.x, spawnData.spawnFrom.y)
+        
+        -- Disable collision with walls while spawning (ghost mode)
+        enemy.physics:setType('kinematic')  -- Kinematic = no collision with static objects
+        
+        print("Spawned Level " .. (level or 1) .. " Philistine (walking in from " .. spawnData.spawnFrom.x .. ", " .. spawnData.spawnFrom.y .. " to " .. x .. ", " .. y .. ")")
+    else
+        print("Spawned Level " .. (level or 1) .. " Philistine at (" .. x .. ", " .. y .. ")")
+    end
+    
+    table.insert(enemies, enemy)
 end
 
 function love.update(dt)
@@ -62,11 +90,20 @@ function love.update(dt)
     
     player:update(dt)
     
-    -- 🎯 Spawn timer system
-    if #enemies == 0 then
+    -- 🎯 Spawn timer system (spawn up to maxEnemies)
+    if #enemies < maxEnemies then
         spawnTimer = spawnTimer + dt
         if spawnTimer >= spawnInterval then
-            spawnEnemy(616, 150, 1)
+            -- Get next spawn point
+            local spawnPoint = spawnPoints[currentSpawnIndex]
+            spawnEnemy(spawnPoint.x, spawnPoint.y, 1, spawnPoint)
+            
+            -- Move to next spawn point (rotate through all 4)
+            currentSpawnIndex = currentSpawnIndex + 1
+            if currentSpawnIndex > #spawnPoints then
+                currentSpawnIndex = 1
+            end
+            
             spawnTimer = 0
         end
     end
@@ -126,7 +163,7 @@ function love.draw()
     environment:drawForeground()
     
     -- Draw physics world for debugging (temporary)
-    world:draw()  -- Show colliders for debugging
+    -- world:draw()  -- Show colliders for debugging
     
     -- ═══════════════════════════════════════════════════════════════
     -- 🛠️ DEBUG INFO (REMOVE ONCE ENEMIES ARE IMPLEMENTED)
