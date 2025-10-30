@@ -11,6 +11,7 @@ function Samson:new(x, y)
     self.y = y
     self.speed = 100
     self.health = 100
+    self.maxHealth = 100  -- Maximum health for UI display
     self.width = 32  -- Character width for collision
     self.height = 32 -- Character height for collision
     self.environment = nil -- Will be set by main.lua
@@ -463,10 +464,10 @@ end
 
 -- ⚔️ APPLY ATTACK DAMAGE TO ENEMIES (called once per attack)
 function Samson:applyAttackDamage(enemies)
-    -- Attack range (sword reach)
-    local attackRange = 50  -- Base range
-    local directionOffset = 20  -- Sword extends in attack direction
-    local totalRange = attackRange + directionOffset
+    -- Attack range (sword reach) - increased for better combat feel
+    local attackRange = 70  -- Base range (was 50)
+    local directionOffset = 25  -- Sword extends in attack direction (was 20)
+    local totalRange = attackRange + directionOffset  -- Total: 95 pixels
     
     -- Check each enemy and apply damage once
     for i, enemy in ipairs(enemies) do

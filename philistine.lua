@@ -12,25 +12,31 @@ function Philistine:new(x, y, level)
     self.y = y
     self.level = level or 1
     
-    -- 🟢 Progressive stats based on level
+    -- 🟢 Progressive stats based on level (Wave system)
     if self.level == 1 then
+        -- Wave 1: Level 1 Philistines (2 hits, 10 damage)
+        self.health = 2
+        self.maxHealth = 2
+        self.speed = 50
+        self.magnitude = 50
+        self.viewDistance = 200  -- Normal detection
+        self.attackDamage = 10
+    elseif self.level == 2 then
+        -- Wave 2: Level 2 Philistines (3 hits, 10 damage, chase from spawn)
         self.health = 3
         self.maxHealth = 3
-        self.speed = 50  -- Slower than Samson
-        self.magnitude = 50
-        self.viewDistance = 200  -- Bigger detection radius
-    elseif self.level == 2 then
-        self.health = 5
-        self.maxHealth = 5
-        self.speed = 60  -- Slower than Samson
+        self.speed = 60
         self.magnitude = 60
-        self.viewDistance = 220  -- Bigger detection radius
-    else -- level 3
+        self.viewDistance = 999999  -- Infinite detection (chase from spawn)
+        self.attackDamage = 10
+    else
+        -- Wave 3: Level 3 Philistines (7 hits, 20 damage, chase from spawn)
         self.health = 7
         self.maxHealth = 7
-        self.speed = 70  -- Slower than Samson
+        self.speed = 70
         self.magnitude = 70
-        self.viewDistance = 240  -- Bigger detection radius
+        self.viewDistance = 999999  -- Infinite detection (chase from spawn)
+        self.attackDamage = 20  -- Double damage!
     end
     
     -- 🎯 Legend-of-lua state system
@@ -56,7 +62,7 @@ function Philistine:new(x, y, level)
     -- ⚔️ Attack system (like Samson)
     self.isAttacking = false
     self.attackRange = 60  -- Distance to start attacking
-    self.attackDamage = 10  -- Damage per attack
+    -- attackDamage set above based on level
     self.lastAttackDamageFrame = 0  -- Track which frames have dealt damage
     self.attackCooldown = 0  -- Cooldown before can attack again
     self.minCooldown = 1.5  -- Minimum seconds between attacks
@@ -79,14 +85,17 @@ function Philistine:new(x, y, level)
     -- 🔧 Physics (will be set by main.lua)
     self.physics = nil
     
-    -- 🖼️ Load sprite sheets (exact same way as Samson)
+    -- 🖼️ Load sprite sheets based on level
+    local spriteFolder = "assets/sprites/philistines/lvl" .. self.level .. "_philistine/"
+    local spritePrefix = "lvl" .. self.level
+    
     self.images = {
-        idle = love.graphics.newImage("assets/sprites/philistines/lvl1_philistine/lvl1_idle.png"),
-        walk = love.graphics.newImage("assets/sprites/philistines/lvl1_philistine/lvl1_walk.png"),
-        attack = love.graphics.newImage("assets/sprites/philistines/lvl1_philistine/lvl1_attack.png"),
-        walk_attack = love.graphics.newImage("assets/sprites/philistines/lvl1_philistine/lvl1_walk_attack.png"),
-        hurt = love.graphics.newImage("assets/sprites/philistines/lvl1_philistine/lvl1_hurt.png"),
-        death = love.graphics.newImage("assets/sprites/philistines/lvl1_philistine/lvl1_death.png")
+        idle = love.graphics.newImage(spriteFolder .. spritePrefix .. "_idle.png"),
+        walk = love.graphics.newImage(spriteFolder .. spritePrefix .. "_walk.png"),
+        attack = love.graphics.newImage(spriteFolder .. spritePrefix .. "_attack.png"),
+        walk_attack = love.graphics.newImage(spriteFolder .. spritePrefix .. "_walk_attack.png"),
+        hurt = love.graphics.newImage(spriteFolder .. spritePrefix .. "_hurt.png"),
+        death = love.graphics.newImage(spriteFolder .. spritePrefix .. "_death.png")
     }
     
     -- 🔲 Create animation grids (exact same way as Samson)
@@ -217,7 +226,7 @@ function Philistine:checkAttackDamage(player)
     end
 end
 
--- 🟨 UPDATE LOOP (simple like Samson)
+-- 🟨 UPDATE LOOP
 function Philistine:update(dt)
     -- 🎬 Handle spawn walk-in animation
     if self.isSpawning and self.spawnTarget and not self.spawnComplete then
@@ -369,6 +378,12 @@ function Philistine:update(dt)
             self.currentAnimation = newAnimation
             self.currentAnimation:gotoFrame(1)
         end
+        
+        -- Update idle animation
+        if self.currentAnimation then
+            self.currentAnimation:update(dt)
+        end
+        
         return
     end
     
@@ -393,6 +408,46 @@ function Philistine:update(dt)
             if norm > 0 then
                 dx = dx / norm
                 dy = dy / norm
+                
+                -- 🧱 Use proper rayCast to check for walls
+                local hasWall = false
+                if self.world and self.world.box2d_world then
+                    self.world.box2d_world:rayCast(ex, ey, px, py, function(fixture, x, y, xn, yn, fraction)
+                        -- Skip sensors (they don't block movement)
+                        if fixture:isSensor() then
+                            return 1  -- continue ray
+                        end
+                        
+                        local body = fixture:getBody()
+                        
+                        -- Check if it's a static body (wall)
+                        if body:getType() == 'static' then
+                            hasWall = true
+                            return 0  -- stop ray, we hit a wall
+                        end
+                        
+                        return 1  -- continue ray
+                    end)
+                end
+                
+                -- If wall detected, try moving perpendicular to go around it
+                if hasWall then
+                    -- Add perpendicular movement based on which axis is blocked
+                    if math.abs(dx) > math.abs(dy) then
+                        -- Moving more horizontally, add vertical movement
+                        dy = dy + (py > ey and 1.0 or -1.0)
+                    else
+                        -- Moving more vertically, add horizontal movement
+                        dx = dx + (px > ex and 1.0 or -1.0)
+                    end
+                    
+                    -- Normalize the adjusted direction
+                    norm = math.sqrt(dx^2 + dy^2)
+                    if norm > 0 then
+                        dx = dx / norm
+                        dy = dy / norm
+                    end
+                end
                 
                 -- Use setLinearVelocity like Samson
                 local vx = dx * self.speed
