@@ -1,6 +1,7 @@
 -- ui.lua
 -- UI system for The Nazarite
 
+local anim8 = require('lib.anim8')
 local UI = {}
 
 function UI:new()
@@ -28,6 +29,11 @@ function UI:new()
     
     -- 💀 Load sword icon for kills banner
     self.swordIcon = love.graphics.newImage("assets/Icons/sword.png")
+    
+    -- 🎮 Load controls animation
+    self.controlsImage = love.graphics.newImage("assets/sprites/Controls (Menu)/the-nazarite-controls-sprite.png")
+    local controlsGrid = anim8.newGrid(386, 246, self.controlsImage:getWidth(), self.controlsImage:getHeight())
+    self.controlsAnimation = anim8.newAnimation(controlsGrid('1-11', '1-10'), 0.03)
     
     -- 🌊 Wave prompt system
     self.wavePromptImage = love.graphics.newImage("assets/Icons/wave_prompt.png")
@@ -185,6 +191,13 @@ function UI:drawWavePrompt()
     love.graphics.setColor(1, 1, 1, 1)
 end
 
+-- 🎮 Update menu (for controls animation)
+function UI:updateMenu(dt)
+    if self.controlsAnimation then
+        self.controlsAnimation:update(dt)
+    end
+end
+
 -- 🎮 Draw main menu
 function UI:drawMenu()
     -- Draw semi-transparent overlay
@@ -220,6 +233,47 @@ function UI:drawMenu()
     local blinkAlpha = (math.sin(love.timer.getTime() * 3) + 1) / 2
     love.graphics.setColor(1, 1, 1, blinkAlpha)
     love.graphics.print(promptText, promptX, promptY)
+    
+    -- Draw controls (left side and right sprite)
+    local screenW = love.graphics.getWidth()
+    local screenH = love.graphics.getHeight()
+    
+    -- Draw controls animation (bottom right)
+    if self.controlsAnimation then
+        love.graphics.setColor(1, 0.843, 0, 1)
+        local controlsScale = 1.0
+        local controlsW = 386 * controlsScale
+        local controlsH = 246 * controlsScale
+        local controlsX = screenW - controlsW - 50
+        local controlsY = screenH - controlsH - 20
+        
+        self.controlsAnimation:draw(self.controlsImage, controlsX, controlsY, 0, controlsScale, controlsScale)
+        
+        -- Draw "CONTROLS" header and descriptions aligned with sprite
+        local controlsFont = self.menuFont or love.graphics.newFont(32)
+        love.graphics.setFont(controlsFont)
+        local headerText = "CONTROLS"
+        local headerX = 80
+        local headerY = controlsY + 40
+        love.graphics.setColor(1, 0.843, 0, 1)
+        love.graphics.print(headerText, headerX, headerY)
+        
+        -- Draw control descriptions (using imported font but larger size)
+        local smallControlsFont = self.menuFont or love.graphics.newFont(24)
+        if self.menuFont then
+            -- Create larger version of the imported font
+            smallControlsFont = love.graphics.newFont("assets/Font/Planes_ValMore.ttf", 24)
+        end
+        love.graphics.setFont(smallControlsFont)
+        local descX = 80
+        local descY = controlsY + 90
+        local lineHeight = 40
+        
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.print("WASD / Arrow Keys - Move", descX, descY)
+        love.graphics.print("SPACEBAR - Attack", descX, descY + lineHeight)
+        love.graphics.print("LEFT/RIGHT SHIFT - Run", descX, descY + lineHeight * 2)
+    end
     
     love.graphics.setColor(1, 1, 1)
 end

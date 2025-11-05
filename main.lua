@@ -3,6 +3,7 @@ local Environment = require("environment")
 local Philistine = require("philistine")
 local UI = require("ui")
 local HealthPack = require("healthpack")
+local Audio = require("audio")
 local wf = require('lib/windfield')
 
 -- 🎮 Game State
@@ -12,6 +13,7 @@ local player
 local environment
 local world
 local ui
+local audio
 local enemies = {}
 local healthPacks = {}  -- Track all health pack drops
 local spawnTimer = 0
@@ -41,9 +43,14 @@ local spawnPoints = {
 local currentSpawnIndex = 1  -- Track which spawn point to use next
 
 function love.load()
-    love.window.setMode(1200, 720)  -- 🖥️ Match actual map content width (1200px)
+    love.window.setMode(1200, 720)  -- Windowed mode at 1200x720
+    love.window.setTitle("The Nazarite")  -- Set window title
     
     love.graphics.setDefaultFilter("nearest", "nearest") -- Pixel-perfect scaling
+    
+    -- Initialize systems
+    audio = Audio:new()
+    audio:playMusic("background", 60)  -- Start music at 1:00
     
     -- Initialize Windfield physics world
     world = wf.newWorld(0, 0)
@@ -107,6 +114,12 @@ function spawnEnemy(x, y, level, spawnData)
 end
 
 function love.update(dt)
+    -- Update menu animation
+    if gameState == "menu" then
+        ui:updateMenu(dt)
+        return
+    end
+    
     -- Only update game when playing
     if gameState ~= "playing" then
         return
@@ -332,6 +345,12 @@ end
 -- 🛠️ DEBUG CONTROLS (REMOVE ONCE ENEMIES ARE IMPLEMENTED)
 -- ═══════════════════════════════════════════════════════════════
 function love.keypressed(key)
+    -- ESC: Exit game
+    if key == "escape" then
+        love.event.quit()
+        return
+    end
+    
     -- Menu: Start game
     if gameState == "menu" and key == "return" then
         gameState = "playing"
