@@ -25,11 +25,19 @@ local totalKills = 0
 local totalSpawns = 0  -- Track total spawns (max 10 per wave)
 local enemiesPerSpawnPoint = 1  -- How many to spawn at each point
 
--- Wave thresholds (10 kills per wave)
+-- 🎬 PRESENTATION MODE: Wave thresholds (3 kills per wave)
+local WAVE_1_END = 3    -- Switch to wave 2 at 3 kills
+local WAVE_2_END = 6    -- Switch to wave 3 at 6 kills
+local WAVE_3_END = 9    -- Victory at 9 kills
+local MAX_SPAWNS_PER_WAVE = 3   -- Max 3 spawns per wave (presentation mode)
+
+-- 🎮 FULL GAME MODE: Wave thresholds (10 kills per wave) - COMMENTED OUT
+--[[
 local WAVE_1_END = 10   -- Switch to wave 2 at 10 kills
 local WAVE_2_END = 20   -- Switch to wave 3 at 20 kills
 local WAVE_3_END = 30   -- Victory at 30 kills
 local MAX_SPAWNS_PER_WAVE = 10  -- Max 10 spawns per wave
+--]]
 
 -- Wave prompt tracking
 local gameStarted = false  -- Track if game has started
@@ -44,7 +52,7 @@ local currentSpawnIndex = 1  -- Track which spawn point to use next
 
 function love.load()
     love.window.setMode(1200, 720)  -- Windowed mode at 1200x720
-    love.window.setTitle("The Nazarite")  -- Set window title
+    love.window.setTitle("The Nazirite")  -- Set window title
     
     love.graphics.setDefaultFilter("nearest", "nearest") -- Pixel-perfect scaling
     

@@ -207,7 +207,7 @@ function UI:drawMenu()
     
     -- Draw title
     love.graphics.setFont(self.titleFont)
-    local titleText = "THE NAZARITE"
+    local titleText = "THE NAZIRITE"
     local titleW = self.titleFont:getWidth(titleText)
     local titleH = self.titleFont:getHeight()
     local titleX = (love.graphics.getWidth() - titleW) / 2
